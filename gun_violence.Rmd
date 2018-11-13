@@ -1,0 +1,117 @@
+---
+title: "BamBamBam"
+author: "kailey wolfe"
+date: "11/8/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+##check data types
+## dont use id
+## x_cols = c('incident_id','date', etc)
+
+##caret zv, nzv in preProcess
+##dmv = create DummyVars
+##predict(dmv, data)
+
+##find outliers - create linear model - fit(residuals)
+#filter data through fit(residuals)
+
+#####info USE SPLIT ON || 
+#regex
+
+#lubridate -> create c('month','year')
+```
+##Are gun violence incidents increasing in the United States? How many predicted deaths in December of 2018?
+
+##load data
+```{r}
+#file path
+file_path = "bambambam/gun-violence-data.csv"
+d = read.csv(file_path)
+#View(d)
+
+cols = colnames(d)
+cols
+
+##add missing row
+missing = data.frame('na', '10/1/17', 'Nevada', 'Las Vegas', 59, 489, 'Mandalay Bay 3950 Blvd S','-','-','Route 91 Harvest Festiva; concert, open fire from 32nd floor. 47 guns seized; TOTAL:59 kill, 489 inj, number shot TBD,girlfriend Marilou Danley POI', '-','Hotel','-',47,'64', '-', '-', '-', '-', '-','-')
+names(missing) = cols
+
+df = rbind(d, missing)
+```
+## add year, month, day, total loss
+```{r}
+library(lubridate)
+date = df$date
+strD = as.character(date)
+dates = as.Date(strD, "%m/%d/%y")
+
+gun = df
+gun$date = dates
+
+year = year(dates)
+month = month(dates)
+day = day(dates)
+weekday = wday(dates, label=TRUE)
+
+gun$year = year
+gun$month = month
+gun$day = day
+gun$weekday = weekday
+gun$total_loss = gun$n_killed + gun$n_injured
+#summary(gun)
+```
+
+##find and plot the number of actual gun violence incidents per year (not including 2018 or 2013)
+```{r}
+library(ggplot2)
+ag = aggregate(gun$n_killed, by=list(gun$year), FUN=sum)
+ag = ag[-c(1,6), ]
+colnames(ag) = c('Year','total')
+
+p = ggplot(ag)
+p = p + geom_bar(mapping=aes(x=ag$Year, y=ag$total), stat='identity', color='red', fill='red', width = .25) + xlab("Year") + ylab("total killed") +ggtitle("Number of Deaths from 2014 - 2017") + theme_minimal()
+p
+```
+## total killed / injuries
+```{r}
+library(ggplot2)
+#x = gun$year
+#y = total number of deaths
+ag2 = aggregate(gun$total_loss, by=list(gun$year), FUN=sum)
+ag2 = ag2[-c(1,6), ]
+colnames(ag2) = c('Year','total')
+
+p2 = ggplot(ag2)
+p2 = p2 + geom_bar(mapping=aes(x=ag2$Year, y=ag2$total), stat='identity',color='orange', fill='orange', width = .25) + xlab("Year") + ylab("total killed or injured") +ggtitle("Number of Deaths and Injuries from 2014 - 2017") + theme_minimal()
+p2
+```
+
+### all in one graph 
+```{r}
+library(ggplot2)
+
+ag$incidents = "number of fatalities"
+ag2$incidents = "number of fatalities and injuries"
+d = rbind(ag, ag2)
+bigplot <- ggplot(d, aes(d$Year, d$total, fill=incidents)) + geom_bar(stat="identity", position=position_dodge()) + xlab("Year") + ylab("Total") +ggtitle("Fatalities and Injuries 2014 - 2017") + theme_minimal()
+bigplot
+```
+##plot number of incidents from 2014 - 2017
+```{r}
+library(ggplot2)
+library(plyr)
+
+incidents = count(year, "year")
+incidents = incidents[-c(1,6), ]
+
+p3 = ggplot(incidents)
+p3 = p3 + geom_bar(mapping=aes(x=incidents$year, y=incidents$freq), stat='identity',color='blue', fill='blue', width = .25) + xlab("Year") + ylab("Gun Violence Incidents") +ggtitle("Gun Violence Incidents from 2014 - 2017") + theme_minimal()
+p3
+```
+##predict the total number of incidents, deaths, total deaths + injuries for 2018 and 2019
