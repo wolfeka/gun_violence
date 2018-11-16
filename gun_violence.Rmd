@@ -115,3 +115,35 @@ p3 = p3 + geom_bar(mapping=aes(x=incidents$year, y=incidents$freq), stat='identi
 p3
 ```
 ##predict the total number of incidents, deaths, total deaths + injuries for 2018 and 2019
+```{r}
+library(lattice)
+library(ggplot2)
+library(caret)
+
+ag = aggregate(gun$n_killed, by=list(gun$year), FUN=sum)
+ag = ag[-c(1,6), ]
+colnames(ag) = c('Year','total')
+fit = lm(total~Year, ag)
+
+fit$coefficients
+plot(ag$Year,ag$total)
+abline(fit$coefficients, col='red')
+
+summary(fit)
+```
+
+```{r}
+total_18 = data.frame(2018,predict(fit, data.frame(Year=2018)))
+total_19 = data.frame(2019,predict(fit, data.frame(Year=2019)))
+
+names(total_18)=c('Year','total')
+names(total_19)=c('Year','total')
+modified_ag = rbind(ag,total_18)
+mod_mod_ag = rbind(modified_ag, total_19)
+
+fit = lm(total~Year, mod_mod_ag)
+#fit$coefficients
+
+plot(mod_mod_ag$Year,mod_mod_ag$total)
+abline(fit$coefficients, col='red')
+```
