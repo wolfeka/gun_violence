@@ -1,52 +1,93 @@
 ---
-title: "BamBamBam"
-author: "kailey wolfe"
-date: "11/8/2018"
-output: html_document
+title: "Gun Violence in America"
+date: "`r Sys.Date()`"
+authors: Kailey Wolfe, Xinran Yao, Xinyu Huang
+output:
+  prettydoc::html_pretty:
+    highlight: github
+    theme: cayman
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include = FALSE, echo = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  comment = "#>"
+)
 ```
 
-```{r}
-##check data types
-## dont use id
-## x_cols = c('incident_id','date', etc)
 
-##caret zv, nzv in preProcess
-##dmv = create DummyVars
-##predict(dmv, data)
-
-##find outliers - create linear model - fit(residuals)
-#filter data through fit(residuals)
-
-#####info USE SPLIT ON || 
-#regex
-
-#lubridate -> create c('month','year')
+```{r, echo=FALSE, message=FALSE}
+library(lubridate)
+library(ggplot2)
+library(ggthemes)
+library(plyr)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(wordcloud)
+library(caret)
 ```
-##Are gun violence incidents increasing in the United States? How many predicted deaths in December of 2018?
+authors: Kailey Wolfe, Xinran Yao, Xinyu Huang
 
-##load data
-```{r}
-#file path
+For this project, we pulled a dataset from kaggle https://www.kaggle.com/jameslko/gun-violence-data, which consisted of over 260,000 gun violence incidents in the United States from 2013 - 2018. The data was collected from gunviolencearchive.org, and contained 29 columns describing the date of the incident, the state, city, and address, along with many details of the incident. Since gun violence in America has been seemingly increasing throughout the past few years, we wanted to address three main questions:
+
+- Are gun violence incidents increasing in the United States?
+- What are the most common places gun violence incidents occur?
+- What are important factors that make a mass shooting different than “non mass shootings”? 
+
+
+Columns that were not significant to these questions were deleted, and one row was added - the Las Vegas shooting in 2017 was not included in the original data set.
+
+```{r, eval=FALSE, echo=TRUE}
 file_path = "bambambam/gun-violence-data.csv"
 d = read.csv(file_path)
-#View(d)
 
 cols = colnames(d)
-cols
 
-##add missing row
+##add missing row - Las Vegas Shooting
 missing = data.frame('na', '10/1/17', 'Nevada', 'Las Vegas', 59, 489, 'Mandalay Bay 3950 Blvd S','-','-','Route 91 Harvest Festiva; concert, open fire from 32nd floor. 47 guns seized; TOTAL:59 kill, 489 inj, number shot TBD,girlfriend Marilou Danley POI', '-','Hotel','-',47,'64', '-', '-', '-', '-', '-','-')
 names(missing) = cols
 
 df = rbind(d, missing)
 ```
-## add year, month, day, total loss
-```{r}
+
+
+```{r, echo=FALSE}
+file_path = "bambambam/gun-violence-data.csv"
+d = read.csv(file_path)
+
+cols = colnames(d)
+
+##add missing row - Las Vegas Shooting
+missing = data.frame('na', '10/1/17', 'Nevada', 'Las Vegas', 59, 489, 'Mandalay Bay 3950 Blvd S','-','-','Route 91 Harvest Festiva; concert, open fire from 32nd floor. 47 guns seized; TOTAL:59 kill, 489 inj, number shot TBD,girlfriend Marilou Danley POI', '-','Hotel','-',47,'64', '-', '-', '-', '-', '-','-')
+names(missing) = cols
+df = rbind(d, missing)
+```
+
+After the missing row was added, the lubridate library was used to convert the "date" column. Year, Month, Day, and Weekday columns were then added to the dataset. 
+```{r, eval=FALSE, echo=TRUE}
 library(lubridate)
+date = df$date
+strD = as.character(date)
+dates = as.Date(strD, "%m/%d/%y")
+
+gun = df
+gun$date = dates
+
+gun$year = year(dates)
+gun$month = month(dates)
+gun$day = day(dates)
+gun$weekday = weekday(dates, label=TRUE)
+```
+
+A "total loss" column was also added, which was a sum of the total number of people injured and the total number people killed.
+```{r, eval=FALSE, echo=TRUE}
+gun$total_loss = gun$n_killed + gun$n_injured
+```
+
+```{r, echo=FALSE}
+## add year, month, day, total loss
+
 date = df$date
 strD = as.character(date)
 dates = as.Date(strD, "%m/%d/%y")
@@ -64,77 +105,102 @@ gun$month = month
 gun$day = day
 gun$weekday = weekday
 gun$total_loss = gun$n_killed + gun$n_injured
-#summary(gun)
+#head(gun)
 ```
 
-##find and plot the number of actual gun violence incidents per year (not including 2018 or 2013)
+We first wanted to visualize the actual loss due to gun violence incidents, by aggregating the total number of fatalities, the total number of injuries, and both of these variables combined. 2013 and 2018 had missing data, so we only used data from 2014 - 2017. This was also used as our test data when comparing different models for future incidents. The ggplot library was used to plot the results.
+```{r, eval=FALSE, echo=TRUE}
+#total number killed from 2014 - 2017
+ag = aggregate(gun$n_killed, by=list(gun$year), FUN=sum)
+ag = ag[-c(1,6), ]
+
+#number of injured AND killed by year
+ag2 = aggregate(gun$total_loss, by=list(gun$year), FUN=sum)
+ag2 = ag2[-c(1,6), ]
+
+#number injured by year
+ag3 = aggregate(gun$n_injured, by=list(gun$year), FUN=sum)
+ag3 = ag3[-c(1,6), ]
+```
+
 ```{r}
-library(ggplot2)
+#total number killed from 2014 - 2017
 ag = aggregate(gun$n_killed, by=list(gun$year), FUN=sum)
 ag = ag[-c(1,6), ]
 colnames(ag) = c('Year','total')
 
-p = ggplot(ag)
-p = p + geom_bar(mapping=aes(x=ag$Year, y=ag$total), stat='identity', color='red', fill='red', width = .25) + xlab("Year") + ylab("total killed") +ggtitle("Number of Deaths from 2014 - 2017") + theme_minimal()
-p
-```
-## total killed / injuries
-```{r}
-library(ggplot2)
-#x = gun$year
-#y = total number of deaths
+#number of injured AND killed by year
 ag2 = aggregate(gun$total_loss, by=list(gun$year), FUN=sum)
 ag2 = ag2[-c(1,6), ]
 colnames(ag2) = c('Year','total')
 
-p2 = ggplot(ag2)
-p2 = p2 + geom_bar(mapping=aes(x=ag2$Year, y=ag2$total), stat='identity',color='orange', fill='orange', width = .25) + xlab("Year") + ylab("total killed or injured") +ggtitle("Number of Deaths and Injuries from 2014 - 2017") + theme_minimal()
-p2
+#number injured by year
+ag3 = aggregate(gun$n_injured, by=list(gun$year), FUN=sum)
+ag3 = ag3[-c(1,6), ]
+colnames(ag3) = c('Year','total')
 ```
 
-### all in one graph 
+## A graph of the total loss due to gun violence from 2014 - 2017
 ```{r}
-library(ggplot2)
 
 ag$incidents = "number of fatalities"
+ag3$incidents = "number of injuries"
 ag2$incidents = "number of fatalities and injuries"
-d = rbind(ag, ag2)
-bigplot <- ggplot(d, aes(d$Year, d$total, fill=incidents)) + geom_bar(stat="identity", position=position_dodge()) + xlab("Year") + ylab("Total") +ggtitle("Fatalities and Injuries 2014 - 2017") + theme_minimal()
+
+d = rbind(ag,ag3,ag2)
+bigplot <- ggplot(d, aes(d$Year, d$total, fill=incidents)) + 
+  geom_bar(stat="identity", position=position_dodge()) + 
+  xlab("Year") + ylab("Total") +
+  ggtitle("Fatalities and Injuries 2014 - 2017") + theme_minimal() +
+  geom_text(aes(label=d$total), size=2.8, vjust=0, position=position_dodge(.95)) 
+
 bigplot
 ```
-##plot number of incidents from 2014 - 2017
-```{r}
-library(ggplot2)
-library(plyr)
+
+## Gun violence incidents from 2014 - 2017
+```{r, echo=FALSE}
 
 incidents = count(year, "year")
 incidents = incidents[-c(1,6), ]
 
-p3 = ggplot(incidents)
-p3 = p3 + geom_bar(mapping=aes(x=incidents$year, y=incidents$freq), stat='identity',color='blue', fill='blue', width = .25) + xlab("Year") + ylab("Gun Violence Incidents") +ggtitle("Gun Violence Incidents from 2014 - 2017") + theme_minimal()
-p3
-```
-##predict the total number of incidents, deaths, total deaths + injuries for 2018 and 2019
-```{r}
-library(lattice)
-library(ggplot2)
-library(caret)
+#print(incidents)
+#knitr::kable(incidents)
+dt = data.frame(year = incidents$year, total = incidents$freq)
 
+plt = ggplot(dt, aes(x = year, y = total, fill = total, group = factor(1))) + 
+  geom_bar(stat="identity", width = .5) + 
+  theme_minimal() + 
+  geom_text(aes(label = total, vjust = -0.8, hjust=.5, color=year)) + 
+  xlab("Year") + ylab("Gun Violence Incidents") +
+  ggtitle("Gun Violence Incidents from 2014 - 2017") +
+  theme(legend.position="none")
+plt
+```
+
+## Predicted number of deaths in 2018 and 2019
+To determine the predicted number of deaths for 2018 and 2019, we tried three models.
+The first model tried was a linear model, which had an R squared value of .966.
+The second and third model utilized the caret package.
+
+## Graph of from 2014 - 2017, then our prediction for 2014 - 2019.
+```{r, fig.show='hold'}
+
+#actual graph of deaths from 2014 - 2017
 ag = aggregate(gun$n_killed, by=list(gun$year), FUN=sum)
 ag = ag[-c(1,6), ]
 colnames(ag) = c('Year','total')
 fit = lm(total~Year, ag)
 
-fit$coefficients
-plot(ag$Year,ag$total)
+#fit$coefficients
+plot(ag$Year,ag$total, main="Deaths due to gun violence from 2014-2017",xlab = "Year",ylab="Total Deaths")
 abline(fit$coefficients, col='red')
+#axis(1, at=ag$total,labels = c('2014','2015','2016','2017'))
 
-summary(fit)
-```
-
-```{r}
+#predict num of gun violence related deaths in 2018 and 2019
 total_18 = data.frame(2018,predict(fit, data.frame(Year=2018)))
 total_19 = data.frame(2019,predict(fit, data.frame(Year=2019)))
+total_18
+total_19
 
 names(total_18)=c('Year','total')
 names(total_19)=c('Year','total')
@@ -144,6 +210,80 @@ mod_mod_ag = rbind(modified_ag, total_19)
 fit = lm(total~Year, mod_mod_ag)
 #fit$coefficients
 
-plot(mod_mod_ag$Year,mod_mod_ag$total)
+#plot dat shit
+plot(mod_mod_ag$Year,mod_mod_ag$total,main="Predicted deaths due to gun violence from 2014-2019",xlab = "Year",ylab="Total Deaths")
 abline(fit$coefficients, col='red')
+
+
+
+```
+
+## What are important factors that make a mass shooting different than “non mass shootings”? 
+The dataset explicitly stated that a mass shooting is characterized by 4+ fatalities,
+so we used that information for the data frame used to find factors that make mass shootings different than "non mass shootings."
+```{r, eval=FALSE, echo=TRUE}
+mass = gun[gun$n_killed >=4,]
+```
+
+The column "incident characteristics" contained details on gun violence incidents, so a data frame was created by splitting the incident characteristics by "||", and creating a table to find the highest word frequencies. The results were then plotted using ggplot.
+
+```{r,eval=F,echo=T}
+#incident characteristics
+mass_char = mass$incident_characteristics
+mass_char[] = lapply(mass_char, as.character)
+
+#list of lists split by ||
+d = as.character(mass_char)
+d = strsplit(d,split="||", fixed=TRUE)
+
+#create one string instead of a list of lists
+m = unlist(d, recursive=FALSE)
+
+#get frequency of strings
+groups.t1 = table(m)
+
+#sort table
+groups.t2 = sort(groups.t1, decreasing=TRUE)
+```
+
+```{r}
+#data frame for mass shootings
+mass = gun[gun$n_killed >=4,]
+
+#incident characteristics
+mass_char = mass$incident_characteristics
+mass_char[] = lapply(mass_char, as.character)
+
+#list of lists split by ||
+ddd = as.character(mass_char)
+ddd = strsplit(ddd,split="||", fixed=TRUE)
+
+#create one string instead of a list of lists
+m = unlist(ddd, recursive=FALSE)
+
+#get frequency of strings -- I used table but had to convert it back to a data frame
+groups.t1 = table(m)
+
+#sort table
+groups.t2 = sort(groups.t1, decreasing=TRUE)
+#groups.t2
+
+#percentages
+#prop.table(groups.t2)
+
+#table object sucks, make it a data frame again
+t = as.data.frame(groups.t2)
+colnames(t) = c('characteristics','frequency')
+#head(t)
+
+top20 = t[1:20, ]
+
+#wasSup ggplot
+mass_plt = ggplot(top20, aes(x=top20$characteristics,y=top20$frequency)) +
+  geom_bar(stat='identity',fill='purple',color='purple') +
+  coord_flip() +
+  xlab("characteristics") +
+  ylab("frequency") 
+         
+mass_plt
 ```
